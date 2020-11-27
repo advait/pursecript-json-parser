@@ -1,6 +1,9 @@
 module Main where
 
 import Prelude
+import Control.Alt (class Alt, (<|>))
+import Control.Alternative (class Alternative)
+import Control.Plus (class Plus)
 import Data.Maybe (Maybe(..))
 import Data.String.CodePoints (codePointFromChar, uncons)
 import Data.String.CodeUnits (fromCharArray, toCharArray)
@@ -10,6 +13,13 @@ import Data.Traversable (sequence)
 data JsonValue
   = JsonNull
   | JsonBool Boolean
+
+derive instance eqJsonValue :: Eq JsonValue
+
+instance showJsonValue :: Show JsonValue where
+  show JsonNull = "null"
+  show (JsonBool true) = "true"
+  show (JsonBool false) = "false"
 
 -- | A Parser for an arbitrary type a
 newtype Parser a
@@ -39,6 +49,16 @@ instance applicativeParser :: Applicative Parser where
   pure :: forall a. a -> Parser a
   pure a = Parser \input -> Just { next: input, p: a }
 
+instance altParser :: Alt Parser where
+  alt :: forall a. Parser a -> Parser a -> Parser a
+  alt (Parser p1) (Parser p2) = Parser $ \input -> p1 input <|> p2 input
+
+instance plusParser :: Plus Parser where
+  empty :: forall a. Parser a
+  empty = Parser $ const Nothing
+
+instance alternativeParser :: Alternative Parser
+
 runParser :: forall a. Parser a -> String -> Maybe { next :: String, p :: a }
 runParser (Parser p) = p
 
@@ -62,7 +82,12 @@ stringP s =
     fromCharArray <$> sequence charArray
 
 jsonNullParser :: Parser JsonValue
-jsonNullParser = (\_ -> JsonNull) <$> stringP "null"
+jsonNullParser = const JsonNull <$> stringP "null"
+
+jsonBoolParser :: Parser JsonValue
+jsonBoolParser =
+  (const (JsonBool true) <$> stringP "true")
+    <|> (const (JsonBool false) <$> stringP "false")
 
 jsonValueParser :: Parser JsonValue
-jsonValueParser = jsonNullParser
+jsonValueParser = jsonNullParser <|> jsonBoolParser
